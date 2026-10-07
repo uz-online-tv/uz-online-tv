@@ -1,0 +1,58 @@
+name: Build UZ Online TV Android
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Find and extract app ZIP
+        run: |
+          ZIP=$(find . -maxdepth 2 -type f -name "*.zip" | head -n 1)
+          echo "Using ZIP: $ZIP"
+          mkdir -p app-source
+          unzip -o "$ZIP" -d app-source
+
+      - name: Locate Expo project
+        run: |
+          PROJECT=$(find app-source -name package.json -not -path "*/node_modules/*" | head -n 1 | xargs dirname)
+          echo "PROJECT=$PROJECT" >> "$GITHUB_ENV"
+          echo "Expo project: $PROJECT"
+
+      - name: Install dependencies
+        working-directory: ${{ env.PROJECT }}
+        run: npm install
+
+      - name: Generate Android project
+        working-directory: ${{ env.PROJECT }}
+        run: npx expo prebuild --platform android --non-interactive
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Build Android APK
+        working-directory: ${{ env.PROJECT }}/android
+        run: chmod +x gradlew && ./gradlew assembleRelease
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: UZ-Online-TV-Android
+          path: ${{ env.PROJECT }}/android/app/build/outputs/apk/release/*.apk
